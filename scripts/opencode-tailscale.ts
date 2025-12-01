@@ -98,8 +98,8 @@ async function stop(port: number): Promise<void> {
   // Cache sudo credentials upfront
   await $`sudo -v`.nothrow();
 
-  // Remove tailscale serve for this port
-  await $`sudo tailscale serve --https=${port} off`.nothrow();
+  // Remove tailscale serve for this port (quiet - may not exist)
+  await $`sudo tailscale serve --https=${port} off`.nothrow().quiet();
 
   // Kill the tmux session (this kills all processes in it)
   await $`tmux kill-session -t ${sessionName}`;
