@@ -25,9 +25,12 @@ permissions:
 
 jobs:
   publish:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    env:
+      OCX_CHANNEL: latest
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -35,20 +38,14 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
-      - name: Install OpenCode
-        run: curl -fsSL https://opencode.ai/install | bash
-
       - name: Setup npm auth
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Publish
-        run: |
-          ./scripts/publish.ts
+        run: ./scripts/publish.ts
         env:
           OCX_BUMP: ${{ inputs.bump }}
           OCX_VERSION: ${{ inputs.version }}
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_COGNITIVE_SERVICES_API_KEY: ${{ secrets.AZURE_COGNITIVE_SERVICES_API_KEY }}
-          AZURE_COGNITIVE_SERVICES_RESOURCE: ${{ secrets.AZURE_COGNITIVE_SERVICES_RESOURCE }}

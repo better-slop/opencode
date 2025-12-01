@@ -4,6 +4,11 @@
   "private": false,
   "version": "0.1.0",
   "description": "OpenCode Librarian Plugin",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
   "dependencies": {
     "@opencode-ai/plugin": "catalog:"
   },
