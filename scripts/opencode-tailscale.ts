@@ -3,9 +3,24 @@
 import { $ } from "bun";
 
 const SESSION_PREFIX = "oc-web";
+const DEFAULT_PORT_START = 4096;
 
 function getSessionName(port: number): string {
   return `${SESSION_PREFIX}-${port}`;
+}
+
+async function getTailscaleHostname(): Promise<string | null> {
+  const result = await $`tailscale status --json`.nothrow().quiet();
+  if (result.exitCode !== 0) return null;
+
+  try {
+    const status = JSON.parse(result.stdout.toString());
+    const dnsName: string | undefined = status.Self?.DNSName;
+    if (!dnsName) return null;
+    return dnsName.replace(/\.$/, ""); // strip trailing dot
+  } catch {
+    return null;
+  }
 }
 
 async function sessionExists(sessionName: string): Promise<boolean> {
@@ -14,10 +29,22 @@ async function sessionExists(sessionName: string): Promise<boolean> {
   return result.exitCode === 0;
 }
 
-async function start(port: number, model: string): Promise<void> {
+async function findAvailablePort(): Promise<number> {
+  let port = DEFAULT_PORT_START;
+  while (await sessionExists(getSessionName(port))) {
+    port++;
+  }
+  return port;
+}
+
+async function start(
+  portArg: number | undefined,
+  model: string | undefined,
+): Promise<void> {
+  const port = portArg ?? (await findAvailablePort());
   const sessionName = getSessionName(port);
 
-  if (await sessionExists(sessionName)) {
+  if (portArg !== undefined && (await sessionExists(sessionName))) {
     console.error(
       `Session ${sessionName} already exists. Stop it first or use a different port.`,
     );
@@ -26,8 +53,19 @@ async function start(port: number, model: string): Promise<void> {
 
   console.log(`Starting session ${sessionName}...`);
 
+  // Cache sudo credentials upfront so tmux panes don't prompt
+  console.log("Authenticating sudo...");
+  const sudoResult = await $`sudo -v`.nothrow();
+  if (sudoResult.exitCode !== 0) {
+    console.error("Failed to authenticate sudo");
+    process.exit(1);
+  }
+
+  const modelFlag = model ? `--model ${model}` : "";
+  const ocCmd = `opencode web --port ${port} ${modelFlag}`.trim();
+
   // Create new detached tmux session with opencode web in first pane
-  await $`tmux new-session -d -s ${sessionName} -n main "opencode web --port ${port} --model ${model}"`;
+  await $`tmux new-session -d -s ${sessionName} -n main ${ocCmd}`;
 
   // Split horizontally and run tailscale serve in second pane
   await $`tmux split-window -h -t ${sessionName} "sudo tailscale serve --https ${port} ${port}"`;
@@ -35,9 +73,15 @@ async function start(port: number, model: string): Promise<void> {
   // Select even-horizontal layout for cleaner view
   await $`tmux select-layout -t ${sessionName} even-horizontal`;
 
+  const tsHost = await getTailscaleHostname();
+
   console.log(`Session ${sessionName} started.`);
   console.log(`  OpenCode: http://localhost:${port}`);
-  console.log(`  Tailscale: https://<your-tailnet>:${port}`);
+  if (tsHost) {
+    console.log(`  Tailscale: https://${tsHost}:${port}`);
+  } else {
+    console.log(`  Tailscale: (could not determine hostname)`);
+  }
   console.log(`  Attach: tmux attach -t ${sessionName}`);
 }
 
@@ -50,6 +94,9 @@ async function stop(port: number): Promise<void> {
   }
 
   console.log(`Stopping session ${sessionName}...`);
+
+  // Cache sudo credentials upfront
+  await $`sudo -v`.nothrow();
 
   // Remove tailscale serve for this port
   await $`sudo tailscale serve --https=${port} off`.nothrow();
@@ -76,10 +123,14 @@ async function list(): Promise<void> {
   if (sessions.length === 0) {
     console.log("No active oc:web tmux sessions.\n");
   } else {
+    const tsHost = await getTailscaleHostname();
     console.log("Tmux Sessions:");
     for (const session of sessions) {
       const port = session.replace(`${SESSION_PREFIX}-`, "");
       console.log(`  - ${session} (port ${port})`);
+      if (tsHost) {
+        console.log(`    URL: https://${tsHost}:${port}`);
+      }
       console.log(`    Attach: tmux attach -t ${session}`);
     }
     console.log();
@@ -99,13 +150,18 @@ function printUsage(): void {
   console.log(`Usage: oc-web <command> [options]
 
 Commands:
-  start --port <port> --model <model>   Start opencode web with tailscale serve
-  stop --port <port>                    Stop session on specified port
-  list                                  List all active sessions
+  start [--port <port>] [--model <model>]   Start opencode web with tailscale serve
+  stop --port <port>                        Stop session on specified port
+  list                                      List all active sessions
+
+Options:
+  --port    Port to use (default: auto-selects starting from ${DEFAULT_PORT_START})
+  --model   Model to use (optional)
 
 Examples:
+  oc-web start
   oc-web start --port 3000 --model anthropic/claude-opus-4-5
-  oc-web stop --port 3000
+  oc-web stop --port 4096
   oc-web list`);
 }
 
@@ -138,10 +194,6 @@ async function main(): Promise<void> {
   switch (command) {
     case "start": {
       const opts = parseArgs(rest);
-      if (!opts.port || !opts.model) {
-        console.error("start requires --port and --model");
-        process.exit(1);
-      }
       await start(opts.port, opts.model);
       break;
     }
