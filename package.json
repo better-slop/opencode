@@ -1,19 +1,20 @@
 {
-  "name": "@better-slop/opencode",
-  "module": "index.ts",
-  "type": "module",
+  "name": "@better-slop/ocx",
   "private": true,
-  "scripts": {
-    "compile:oc-web": "bun build scripts/opencode-tailscale.ts --compile ~/.local/bin/oc:web"
+  "workspaces": [
+    "packages/*",
+    "internals/*"
+  ],
+  "catalog": {
+    "@opencode-ai/plugin": "latest",
+    "typescript": "5.9.3"
   },
-  "dependencies": {
-    "@morphllm/morphsdk": "latest",
-    "@opencode-ai/plugin": "latest"
+  "scripts": {
+    "compile:scripts": "bun build scripts/* --compile --out dist/scripts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "latest",
+    "typescript": "catalog:*",
+    "@better-slop-internals/tsconfig": "workspace:*"
   }
 }

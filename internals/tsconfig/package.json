@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "name": "@better-slop-internals/tsconfig",
+  "version": "1.0.0",
+  "description": "bun tsconfig file",
+  "files": [
+    "tsconfig.json"
+  ]
+}

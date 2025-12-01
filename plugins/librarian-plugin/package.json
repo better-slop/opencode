@@ -1,0 +1,14 @@
+{
+  "name": "@better-slop/ocx-librarian-plugin",
+  "private": false,
+  "version": "0.1.0",
+  "description": "OpenCode Librarian Plugin",
+  "dependencies": {
+    "@opencode-ai/plugin": "catalog:*"
+  },
+  "devDependencies": {
+    "@better-slop-internals/tsconfig": "workspace:*",
+    "@types/bun": "latest",
+    "typescript": "catalog:*"
+  }
+}
