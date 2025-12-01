@@ -53,22 +53,14 @@ async function start(
 
   console.log(`Starting session ${sessionName}...`);
 
-  // Cache sudo credentials upfront so tmux panes don't prompt
-  console.log("Authenticating sudo...");
-  const sudoResult = await $`sudo -v`.nothrow();
-  if (sudoResult.exitCode !== 0) {
-    console.error("Failed to authenticate sudo");
-    process.exit(1);
-  }
-
   const modelFlag = model ? `--model ${model}` : "";
   const ocCmd = `opencode web --port ${port} ${modelFlag}`.trim();
 
-  // Create new detached tmux session with opencode web in first pane
+  // Create detached tmux session with opencode web in first pane
   await $`tmux new-session -d -s ${sessionName} -n main ${ocCmd}`;
 
   // Split horizontally and run tailscale serve in second pane
-  await $`tmux split-window -h -t ${sessionName} "sudo tailscale serve --https ${port} ${port}"`;
+  await $`tmux split-window -h -t ${sessionName} "tailscale serve --https ${port} ${port}"`;
 
   // Select even-horizontal layout for cleaner view
   await $`tmux select-layout -t ${sessionName} even-horizontal`;
@@ -95,11 +87,8 @@ async function stop(port: number): Promise<void> {
 
   console.log(`Stopping session ${sessionName}...`);
 
-  // Cache sudo credentials upfront
-  await $`sudo -v`.nothrow();
-
   // Remove tailscale serve for this port (quiet - may not exist)
-  await $`sudo tailscale serve --https=${port} off`.nothrow().quiet();
+  await $`tailscale serve --https=${port} off`.nothrow().quiet();
 
   // Kill the tmux session (this kills all processes in it)
   await $`tmux kill-session -t ${sessionName}`;
