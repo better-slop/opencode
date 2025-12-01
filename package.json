@@ -1,8 +1,11 @@
 {
-  "name": "llms",
+  "name": "@cau1k/llms",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "compile:oc-web": "bun build scripts/opencode-tailscale.ts --compile ~/.local/bin/oc:web"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
