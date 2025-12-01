@@ -6,6 +6,10 @@
   "scripts": {
     "compile:oc-web": "bun build scripts/opencode-tailscale.ts --compile ~/.local/bin/oc:web"
   },
+  "dependencies": {
+    "@morphllm/morphsdk": "latest",
+    "@opencode-ai/plugin": "latest"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
