@@ -1,5 +1,5 @@
 {
-  "name": "@cau1k/llms",
+  "name": "@better-slop/opencode",
   "module": "index.ts",
   "type": "module",
   "private": true,
