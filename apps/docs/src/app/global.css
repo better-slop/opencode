@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "fumadocs-ui/css/black.css";
+@import "fumadocs-ui/css/solar.css";
 @import "fumadocs-ui/css/preset.css";
 
 @plugin "tailwindcss-animate";
@@ -13,6 +13,7 @@
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  size-adjust: 106.25%;
 }
 
 @font-face {
@@ -23,6 +24,7 @@
   font-weight: 400;
   font-style: italic;
   font-display: swap;
+  size-adjust: 126.25%;
 }
 
 @font-face {
@@ -33,6 +35,7 @@
   font-weight: 700;
   font-style: normal;
   font-display: swap;
+  size-adjust: 126.25%;
 }
 
 @font-face {
@@ -43,6 +46,7 @@
   font-weight: 700;
   font-style: italic;
   font-display: swap;
+  size-adjust: 126.25%;
 }
 
 /* CMU Sans Serif - for body text */
@@ -95,6 +99,7 @@
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  size-adjust: 130%;
 }
 
 @font-face {
@@ -105,6 +110,7 @@
   font-weight: 400;
   font-style: italic;
   font-display: swap;
+  size-adjust: 130%;
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -229,10 +235,12 @@
   --radius-xl: 0px;
 
   --font-serif: "CMU Serif", ui-serif, Georgia, "Times New Roman", serif;
-  --font-sans: "CMU Sans Serif", system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
-  --font-mono: "CMU Typewriter Variable", ui-monospace, SFMono-Regular, Menlo,
-    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-sans:
+    "CMU Sans Serif", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono:
+    "CMU Typewriter Variable", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", "Courier New", monospace;
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
