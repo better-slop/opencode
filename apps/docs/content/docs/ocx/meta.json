@@ -1,6 +1,8 @@
 {
-  "title": "ocx",
+  "title": "OCX",
+  "description": "The AI coding agent",
   "root": true,
+  "defaultOpen": true,
   "pages": [
     "---Get Started---",
     "introduction",
@@ -8,7 +10,6 @@
     "basic-usage",
     "---Add-ons---",
     "tools",
-    "plugins",
     "themes",
     "---Misc---",
     "test"

@@ -1,4 +1,6 @@
 {
   "title": "Registries",
+  "description": "Create and manage plugin registries",
+  "root": true,
   "pages": ["introduction", "starting-your-own"]
 }
