@@ -14,8 +14,10 @@
   },
   "scripts": {
     "compile:scripts": "bun build scripts/* --compile --out dist/scripts",
-    "deploy": "bun run --filter docs deploy",
-    "destroy": "bun run --filter docs destroy"
+    "deploy:docs": "bun run --filter docs deploy",
+    "destroy:docs": "bun run --filter docs destroy",
+    "deploy": "bun run deploy:docs",
+    "destroy": "bun run destroy:docs"
   },
   "devDependencies": {
     "@types/bun": "latest",
