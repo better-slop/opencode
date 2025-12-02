@@ -4,6 +4,109 @@
 
 @plugin "tailwindcss-animate";
 
+/* CMU Serif - for headings/titles */
+@font-face {
+  font-family: "CMU Serif";
+  src:
+    url("/fonts/cmu-serif/cmunrm-webfont.woff") format("woff"),
+    url("/fonts/cmu-serif/cmunrm-webfont.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CMU Serif";
+  src:
+    url("/fonts/cmu-serif/cmunti-webfont.woff") format("woff"),
+    url("/fonts/cmu-serif/cmunti-webfont.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CMU Serif";
+  src:
+    url("/fonts/cmu-serif/cmunbx-webfont.woff") format("woff"),
+    url("/fonts/cmu-serif/cmunbx-webfont.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CMU Serif";
+  src:
+    url("/fonts/cmu-serif/cmunbi-webfont.woff") format("woff"),
+    url("/fonts/cmu-serif/cmunbi-webfont.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* CMU Sans Serif - for body text */
+@font-face {
+  font-family: "CMU Sans Serif";
+  src:
+    url("/fonts/cmu-sans/cmunss-webfont.woff") format("woff"),
+    url("/fonts/cmu-sans/cmunss-webfont.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CMU Sans Serif";
+  src:
+    url("/fonts/cmu-sans/cmunsi-webfont.woff") format("woff"),
+    url("/fonts/cmu-sans/cmunsi-webfont.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CMU Sans Serif";
+  src:
+    url("/fonts/cmu-sans/cmunsx-webfont.woff") format("woff"),
+    url("/fonts/cmu-sans/cmunsx-webfont.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CMU Sans Serif";
+  src:
+    url("/fonts/cmu-sans/cmunso-webfont.woff") format("woff"),
+    url("/fonts/cmu-sans/cmunso-webfont.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* CMU Typewriter Variable Width - for code */
+@font-face {
+  font-family: "CMU Typewriter Variable";
+  src:
+    url("/fonts/cmu-typewriter/cmunvt-webfont.woff") format("woff"),
+    url("/fonts/cmu-typewriter/cmunvt-webfont.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CMU Typewriter Variable";
+  src:
+    url("/fonts/cmu-typewriter/cmunvi-webfont.woff") format("woff"),
+    url("/fonts/cmu-typewriter/cmunvi-webfont.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -125,8 +228,11 @@
   --radius-lg: 0px;
   --radius-xl: 0px;
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-serif: "CMU Serif", ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: "CMU Sans Serif", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --font-mono: "CMU Typewriter Variable", ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
@@ -208,7 +314,21 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply overscroll-none bg-background text-foreground selection:bg-foreground selection:text-background;
+    @apply font-sans overscroll-none bg-background text-foreground selection:bg-foreground selection:text-background;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-serif;
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    @apply font-mono;
   }
 }
 
@@ -300,7 +420,7 @@ html:not([data-anchor-scrolling]) {
 .markdown-content h4,
 .markdown-content h5,
 .markdown-content h6 {
-  @apply font-semibold text-foreground;
+  @apply font-serif font-semibold text-foreground;
 }
 
 .markdown-content p {
