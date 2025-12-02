@@ -1,7 +1,7 @@
 import { source } from "@/lib/source";
 import {
   DocsBody,
-  DocsDescription,
+  // DocsDescription,
   DocsPage,
   DocsTitle,
 } from "@/components/layout/docs/page";
@@ -26,12 +26,12 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
       <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+      {/* <DocsDescription>{page.data.description}</DocsDescription> */}
       <div className="flex flex-row gap-2 items-center border-b pt-2 pb-6">
         <LLMCopyButton markdownUrl={`/llms.txt${page.url}.md`} />
         <ViewOptions
           markdownUrl={`/llms.txt${page.url}.md`}
-          githubUrl={`https://github.com/${owner}/${repo}/blob/dev/apps/docs/content/docs/${page.slugs.join('/')}.mdx`}
+          githubUrl={`https://github.com/${owner}/${repo}/blob/dev/apps/docs/content/docs/${page.slugs.join("/")}.mdx`}
         />
       </div>
       <DocsBody>
