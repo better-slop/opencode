@@ -3,7 +3,7 @@
   "name": "@better-slop/ocx-librarian-plugin",
   "private": false,
   "version": "0.1.0",
-  "description": "OpenCode Plugin",
+  "description": "OpenCode Librarian Plugin",
   "exports": {
     ".": {
       "import": "./src/index.ts"
