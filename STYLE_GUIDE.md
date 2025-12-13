@@ -9,3 +9,6 @@
 - AVOID try/catch where possible
 - Prefer single word variable names where possible
 - Use as many bun APIs as possible
+- File naming conventions:
+  - Use kebab-case for file and folder names
+  - Denote test files with <filename>.test.ts
