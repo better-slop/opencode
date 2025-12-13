@@ -1,3 +1,6 @@
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
+import type { ArgumentsCamelCase } from "yargs";
 import {
   applyInstallPlans,
   listEmbeddedItems,
@@ -6,80 +9,17 @@ import {
   resolveRegistryTree,
 } from "@better-slop/core/registry";
 
-type CliFlags = {
+// Global options shared across commands
+type GlobalOptions = {
   cwd: string;
-  overwrite: boolean;
-  allowPostinstall: boolean;
 };
 
-function printHelp(): void {
-  console.log(`ocx
-
-Usage:
-  ocx add <spec...> [--cwd <dir>] [--overwrite] [--allow-postinstall]
-  ocx list
-
-Notes:
-  - Specs can be embedded item names (e.g. "hello"), URLs, or paths to .json manifests.
-  - Default install is project-local via nearest .opencode/opencode.jsonc.
-  - Postinstall hooks are skipped unless --allow-postinstall is set.
-  - // TODO: windows support
-  - // TODO: decide bun add defaults
-`);
-}
-
-function parseArgs(argv: string[]): {
-  command: string | null;
-  specs: string[];
-  flags: CliFlags;
-} {
-  const flags: CliFlags = {
-    cwd: process.cwd(),
-    overwrite: false,
-    allowPostinstall: false,
-  };
-
-  const positionals: string[] = [];
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i] ?? "";
-
-    if (token === "--help" || token === "-h") {
-      return { command: "help", specs: [], flags };
-    }
-
-    if (token === "--cwd") {
-      const next = argv[i + 1];
-      if (!next) {
-        throw new Error("--cwd requires a value");
-      }
-      flags.cwd = next;
-      i += 1;
-      continue;
-    }
-
-    if (token === "--overwrite") {
-      flags.overwrite = true;
-      continue;
-    }
-
-    if (token === "--allow-postinstall") {
-      flags.allowPostinstall = true;
-      continue;
-    }
-
-    if (token.startsWith("--")) {
-      throw new Error(`Unknown flag: ${token}`);
-    }
-
-    positionals.push(token);
-  }
-
-  const command = positionals[0] ?? null;
-  const specs = command ? positionals.slice(1) : [];
-
-  return { command, specs, flags };
-}
+// Options specific to the 'add' command
+type AddOptions = GlobalOptions & {
+  spec: string[];
+  overwrite: boolean;
+  "allow-postinstall": boolean;
+};
 
 type InstallPlan = ReturnType<typeof planInstalls>[number];
 
@@ -98,9 +38,9 @@ function printPostinstallPreview(plans: InstallPlan[]): void {
   }
 }
 
-async function runAdd(specs: string[], flags: CliFlags): Promise<void> {
-  const configRoot = await resolveConfigRoot(flags.cwd);
-  const resolved = await resolveRegistryTree(specs, { cwd: flags.cwd });
+async function runAdd(argv: ArgumentsCamelCase<AddOptions>): Promise<void> {
+  const configRoot = await resolveConfigRoot(argv.cwd);
+  const resolved = await resolveRegistryTree(argv.spec, { cwd: argv.cwd });
   const plans = planInstalls(resolved, configRoot);
 
   const fileCount = plans.reduce((sum, p) => sum + p.writes.length, 0);
@@ -111,7 +51,7 @@ async function runAdd(specs: string[], flags: CliFlags): Promise<void> {
   console.log(`Config: ${configRoot.configPath}`);
   console.log(`Install root: ${configRoot.opencodeDir} (${configRoot.kind})`);
   console.log(
-    `Files: ${fileCount}  Overwrite: ${flags.overwrite ? "yes" : "no"}  Postinstall: ${flags.allowPostinstall ? "run" : "skip"}`,
+    `Files: ${fileCount}  Overwrite: ${argv.overwrite ? "yes" : "no"}  Postinstall: ${argv.allowPostinstall ? "run" : "skip"}`,
   );
 
   console.log("Items:");
@@ -120,13 +60,13 @@ async function runAdd(specs: string[], flags: CliFlags): Promise<void> {
   }
 
   printPostinstallPreview(plans);
-  if (hasHooks && !flags.allowPostinstall) {
+  if (hasHooks && !argv.allowPostinstall) {
     console.log("\nRe-run with --allow-postinstall to execute hooks.");
   }
 
   const result = await applyInstallPlans(plans, {
-    overwrite: flags.overwrite,
-    allowPostinstall: flags.allowPostinstall,
+    overwrite: argv.overwrite,
+    allowPostinstall: argv.allowPostinstall,
   });
 
   console.log(`\nWrote ${result.wroteFiles.length} item(s).`);
@@ -141,32 +81,73 @@ function runList(): void {
   }
 }
 
-async function main(): Promise<void> {
-  const { command, specs, flags } = parseArgs(process.argv.slice(2));
-
-  if (!command || command === "help") {
-    printHelp();
-    return;
-  }
-
-  if (command === "list") {
-    runList();
-    return;
-  }
-
-  if (command === "add") {
-    if (specs.length === 0) {
-      throw new Error("ocx add requires at least one spec");
+const cli = yargs(hideBin(process.argv))
+  .scriptName("ocx")
+  .usage("$0 <command> [options]")
+  .option("cwd", {
+    type: "string",
+    default: process.cwd(),
+    global: true,
+    describe: "Working directory",
+  })
+  .command<AddOptions>({
+    command: "add <spec..>",
+    describe: "Add specs (embedded names, URLs, or paths to .json manifests)",
+    builder: (y) =>
+      y
+        .positional("spec", {
+          describe: "Spec strings to add",
+          type: "string",
+          array: true,
+          demandOption: true,
+        })
+        .option("overwrite", {
+          type: "boolean",
+          default: false,
+          describe: "Overwrite existing files",
+        })
+        .option("allow-postinstall", {
+          type: "boolean",
+          default: false,
+          describe: "Run postinstall hooks",
+        }),
+    handler: async (argv) => {
+      await runAdd(argv);
+    },
+  })
+  .command({
+    command: "list",
+    describe: "List available embedded items",
+    handler: () => {
+      runList();
+    },
+  })
+  .demandCommand(1, "You must specify a command")
+  .strict()
+  .strictCommands()
+  .recommendCommands()
+  .help()
+  .alias("h", "help")
+  .version(false) // no version flag for now
+  .showHelpOnFail(true)
+  .wrap(Math.min(100, process.stdout.columns ?? 80))
+  .epilogue(`Notes:
+  - Specs can be embedded item names (e.g. "hello"), URLs, or paths to .json manifests.
+  - Default install is project-local via nearest .opencode/opencode.jsonc.
+  - Postinstall hooks are skipped unless --allow-postinstall is set.
+  - // TODO: windows support
+  - // TODO: decide bun add defaults`)
+  .fail((msg, err) => {
+    if (err) {
+      console.error(err.message);
+    } else if (msg) {
+      console.error(msg);
     }
-    await runAdd(specs, flags);
-    return;
-  }
-
-  throw new Error(`Unknown command: ${command}`);
-}
+    process.exitCode = 1;
+  });
 
 try {
-  await main();
+  await cli.parseAsync();
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(msg);
