@@ -5,7 +5,7 @@ export { planInstalls, applyInstallPlans, defaultHomeDir } from "./install";
 export { listEmbeddedItems } from "./embedded";
 
 export type {
-  OcxItemKind,
+  OCXItemKind,
   ConfigRoot,
   RegistryItem,
   RegistryItemV1,

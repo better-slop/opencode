@@ -1,30 +1,30 @@
 import type { RegistryItemV1 } from "./types";
 
-const EMBEDDED_TOOL_FILES = {
+const TOOLS = {
   hello: new URL("./embedded/tools/hello.ts", import.meta.url),
 } as const;
 
-export type EmbeddedItemName = keyof typeof EMBEDDED_TOOL_FILES;
+export type EmbeddedName = keyof typeof TOOLS;
 
-export function listEmbeddedItems(): EmbeddedItemName[] {
-  return Object.keys(EMBEDDED_TOOL_FILES) as EmbeddedItemName[];
+export function listEmbeddedItems(): EmbeddedName[] {
+  return Object.keys(TOOLS) as EmbeddedName[];
 }
 
 export async function getEmbeddedRegistryItem(
   name: string,
 ): Promise<RegistryItemV1 | null> {
-  const direct = name.trim();
-  const withoutNamespace = direct.includes("/") ? (direct.split("/").at(-1) ?? "") : direct;
+  const s = name.trim();
+  const key = s.includes("/") ? (s.split("/").at(-1) ?? "") : s;
 
-  if (withoutNamespace in EMBEDDED_TOOL_FILES) {
-    const key = withoutNamespace as EmbeddedItemName;
-    const fileUrl = EMBEDDED_TOOL_FILES[key];
-    const content = await Bun.file(fileUrl).text();
+  if (key in TOOLS) {
+    const k = key as EmbeddedName;
+    const url = TOOLS[k];
+    const content = await Bun.file(url).text();
 
     return {
       schemaVersion: 1,
       kind: "tool",
-      name: key,
+      name: k,
       description: "Embedded ocx registry item",
       files: [
         {

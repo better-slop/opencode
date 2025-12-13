@@ -1,6 +1,6 @@
 type Quote = "\"" | "'";
 
-type ScanState = {
+type State = {
   inString: boolean;
   quote: Quote | null;
   escaped: boolean;
@@ -8,7 +8,7 @@ type ScanState = {
   inBlockComment: boolean;
 };
 
-function createState(): ScanState {
+function createState(): State {
   return {
     inString: false,
     quote: null,
@@ -26,8 +26,8 @@ function isQuote(ch: string): ch is Quote {
   return ch === "\"" || ch === "'";
 }
 
-function skipInsignificant(text: string, startIndex: number): number {
-  let i = startIndex;
+function skip(text: string, start: number): number {
+  let i = start;
 
   while (i < text.length) {
     const ch = text[i] ?? "";
@@ -64,63 +64,63 @@ function skipInsignificant(text: string, startIndex: number): number {
   return text.length;
 }
 
-function findMatchingClosing(
+function findClose(
   text: string,
-  openIndex: number,
+  open: number,
   openChar: "{" | "[",
   closeChar: "}" | "]",
 ): number {
-  const state = createState();
+  const st = createState();
   let depth = 0;
 
-  for (let i = openIndex; i < text.length; i += 1) {
+  for (let i = open; i < text.length; i += 1) {
     const ch = text[i] ?? "";
     const next = text[i + 1] ?? "";
 
-    if (state.inLineComment) {
-      if (ch === "\n") state.inLineComment = false;
+    if (st.inLineComment) {
+      if (ch === "\n") st.inLineComment = false;
       continue;
     }
 
-    if (state.inBlockComment) {
+    if (st.inBlockComment) {
       if (ch === "*" && next === "/") {
-        state.inBlockComment = false;
+        st.inBlockComment = false;
         i += 1;
       }
       continue;
     }
 
-    if (state.inString) {
-      if (state.escaped) {
-        state.escaped = false;
+    if (st.inString) {
+      if (st.escaped) {
+        st.escaped = false;
         continue;
       }
       if (ch === "\\") {
-        state.escaped = true;
+        st.escaped = true;
         continue;
       }
-      if (state.quote && ch === state.quote) {
-        state.inString = false;
-        state.quote = null;
+      if (st.quote && ch === st.quote) {
+        st.inString = false;
+        st.quote = null;
       }
       continue;
     }
 
     if (ch === "/" && next === "/") {
-      state.inLineComment = true;
+      st.inLineComment = true;
       i += 1;
       continue;
     }
 
     if (ch === "/" && next === "*") {
-      state.inBlockComment = true;
+      st.inBlockComment = true;
       i += 1;
       continue;
     }
 
     if (isQuote(ch)) {
-      state.inString = true;
-      state.quote = ch;
+      st.inString = true;
+      st.quote = ch;
       continue;
     }
 
@@ -196,8 +196,8 @@ function parseIdentifierToken(text: string, startIndex: number): {
 function findValueEnd(text: string, valueStart: number): number {
   const first = text[valueStart] ?? "";
 
-  if (first === "{") return findMatchingClosing(text, valueStart, "{", "}") + 1;
-  if (first === "[") return findMatchingClosing(text, valueStart, "[", "]") + 1;
+  if (first === "{") return findClose(text, valueStart, "{", "}") + 1;
+  if (first === "[") return findClose(text, valueStart, "[", "]") + 1;
   if (isQuote(first)) return parseStringToken(text, valueStart).endIndex;
 
   const state = createState();
@@ -278,7 +278,7 @@ function findTopLevelPropertyValueSpan(
   let i = rootOpenIndex + 1;
 
   while (i < rootCloseIndex) {
-    i = skipInsignificant(text, i);
+    i = skip(text, i);
     if (i >= rootCloseIndex) return null;
 
     const ch = text[i] ?? "";
@@ -289,13 +289,13 @@ function findTopLevelPropertyValueSpan(
       : parseIdentifierToken(text, i);
 
     const key = keyToken.value;
-    i = skipInsignificant(text, keyToken.endIndex);
+    i = skip(text, keyToken.endIndex);
 
     if ((text[i] ?? "") !== ":") {
       throw new Error("Invalid JSONC object: expected ':' after property key");
     }
 
-    i = skipInsignificant(text, i + 1);
+    i = skip(text, i + 1);
 
     const valueStart = i;
     const valueEnd = findValueEnd(text, valueStart);
@@ -305,7 +305,7 @@ function findTopLevelPropertyValueSpan(
     }
 
     i = valueEnd;
-    i = skipInsignificant(text, i);
+    i = skip(text, i);
     if ((text[i] ?? "") === ",") i += 1;
   }
 
@@ -394,14 +394,14 @@ export function getTopLevelJsoncPropertyValueText(
   propertyName: string,
 ): string | null {
   const original = inputText.length === 0 ? "{}" : inputText;
-  const first = skipInsignificant(original, 0);
+  const first = skip(original, 0);
 
   if ((original[first] ?? "") !== "{") {
     throw new Error("Expected JSONC root object");
   }
 
   const rootOpenIndex = first;
-  const rootCloseIndex = findMatchingClosing(original, rootOpenIndex, "{", "}");
+  const rootCloseIndex = findClose(original, rootOpenIndex, "{", "}");
 
   const span = findTopLevelPropertyValueSpan(
     original,
@@ -419,14 +419,14 @@ export function upsertTopLevelJsoncProperty(
   propertyValue: unknown,
 ): string {
   const original = inputText.length === 0 ? "{}" : inputText;
-  const first = skipInsignificant(original, 0);
+  const first = skip(original, 0);
 
   if ((original[first] ?? "") !== "{") {
     throw new Error("Expected JSONC root object");
   }
 
   const rootOpenIndex = first;
-  const rootCloseIndex = findMatchingClosing(original, rootOpenIndex, "{", "}");
+  const rootCloseIndex = findClose(original, rootOpenIndex, "{", "}");
 
   const span = findTopLevelPropertyValueSpan(
     original,

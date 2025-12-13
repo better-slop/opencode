@@ -1,4 +1,4 @@
-export type OcxItemKind = "tool" | "agent" | "command" | "themes";
+export type OCXItemKind = "tool" | "agent" | "command" | "themes";
 
 export type ConfigRootKind = "project" | "global";
 
@@ -13,7 +13,7 @@ export type RegistryItemSchemaVersion = 1;
 
 export type RegistryItemV1 = {
   schemaVersion: RegistryItemSchemaVersion;
-  kind: OcxItemKind;
+  kind: OCXItemKind;
   name: string;
   description?: string;
   registryDependencies?: string[];
@@ -34,7 +34,7 @@ export type RegistryItem = RegistryItemV1;
 export type InstallPlan = {
   configRoot: ConfigRoot;
   item: {
-    kind: OcxItemKind;
+    kind: OCXItemKind;
     name: string;
     source: string;
     targetDir: string;

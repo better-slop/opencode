@@ -7,19 +7,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function asStringArray(value: unknown, fieldName: string): string[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
-    throw new Error(`Invalid registry item: ${fieldName} must be string[]`);
+function asStringArray(val: unknown, field: string): string[] {
+  if (val === undefined) return [];
+  if (!Array.isArray(val) || val.some((v) => typeof v !== "string")) {
+    throw new Error(`Invalid registry item: ${field} must be string[]`);
   }
-  return value;
+  return val;
 }
 
-function parseRegistryItemV1(raw: unknown): RegistryItemV1 {
+function parseV1(raw: unknown): RegistryItemV1 {
   if (!isRecord(raw)) throw new Error("Invalid registry item: expected object");
 
-  const schemaVersion = raw.schemaVersion;
-  if (schemaVersion !== 1) {
+  const ver = raw.schemaVersion;
+  if (ver !== 1) {
     throw new Error("Invalid registry item: unsupported schemaVersion");
   }
 
@@ -33,7 +33,7 @@ function parseRegistryItemV1(raw: unknown): RegistryItemV1 {
     throw new Error("Invalid registry item: name must be a non-empty string");
   }
 
-  const description =
+  const desc =
     raw.description === undefined
       ? undefined
       : typeof raw.description === "string"
@@ -49,10 +49,10 @@ function parseRegistryItemV1(raw: unknown): RegistryItemV1 {
 
   const files = filesRaw.map((f) => {
     if (!isRecord(f)) throw new Error("Invalid registry item: file must be object");
-    const filePath = f.path;
+    const p = f.path;
     const content = f.content;
 
-    if (typeof filePath !== "string" || filePath.length === 0) {
+    if (typeof p !== "string" || p.length === 0) {
       throw new Error("Invalid registry item: file.path must be string");
     }
 
@@ -60,20 +60,18 @@ function parseRegistryItemV1(raw: unknown): RegistryItemV1 {
       throw new Error("Invalid registry item: file.content must be string");
     }
 
-    const modeRaw = f.mode;
+    const m = f.mode;
     let mode: "0644" | "0755" | undefined;
 
-    if (modeRaw === undefined) {
+    if (m === undefined) {
       mode = undefined;
-    } else if (modeRaw === "0644" || modeRaw === "0755") {
-      mode = modeRaw;
+    } else if (m === "0644" || m === "0755") {
+      mode = m;
     } else {
       throw new Error("Invalid registry item: file.mode must be 0644|0755");
     }
 
-    return mode
-      ? { path: filePath, content, mode }
-      : { path: filePath, content };
+    return mode ? { path: p, content, mode } : { path: p, content };
   });
 
   const entryRaw = raw.entry;
@@ -86,30 +84,30 @@ function parseRegistryItemV1(raw: unknown): RegistryItemV1 {
             throw new Error("Invalid registry item: entry must be string");
           })();
 
-  const postinstallRaw = raw.postinstall;
+  const post = raw.postinstall;
   const postinstall =
-    postinstallRaw === undefined
+    post === undefined
       ? undefined
       : (() => {
-          if (!isRecord(postinstallRaw)) {
+          if (!isRecord(post)) {
             throw new Error("Invalid registry item: postinstall must be object");
           }
-          const commandsRaw = postinstallRaw.commands;
-          if (!Array.isArray(commandsRaw) || commandsRaw.some((c) => typeof c !== "string")) {
+          const cmds = post.commands;
+          if (!Array.isArray(cmds) || cmds.some((c) => typeof c !== "string")) {
             throw new Error("Invalid registry item: postinstall.commands must be string[]");
           }
-          const cwdRaw = postinstallRaw.cwd;
-          if (cwdRaw !== undefined && typeof cwdRaw !== "string") {
+          const cwd = post.cwd;
+          if (cwd !== undefined && typeof cwd !== "string") {
             throw new Error("Invalid registry item: postinstall.cwd must be string");
           }
-          return { commands: commandsRaw, cwd: cwdRaw };
+          return { commands: cmds, cwd };
         })();
 
   return {
     schemaVersion: 1,
     kind,
     name,
-    description,
+    description: desc,
     registryDependencies: asStringArray(raw.registryDependencies, "registryDependencies"),
     files,
     entry,
@@ -117,15 +115,15 @@ function parseRegistryItemV1(raw: unknown): RegistryItemV1 {
   };
 }
 
-function isProbablyUrl(spec: string): boolean {
+function isUrl(spec: string): boolean {
   return spec.startsWith("http://") || spec.startsWith("https://");
 }
 
-function looksLikeFilePath(spec: string): boolean {
+function isPath(spec: string): boolean {
   return spec.startsWith("/") || spec.startsWith("./") || spec.startsWith("../") || spec.endsWith(".json");
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJSON(url: string): Promise<unknown> {
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to fetch registry item: ${url} (${res.status})`);
@@ -142,31 +140,29 @@ export async function fetchRegistryItem(
   spec: string,
   opts: { cwd: string },
 ): Promise<FetchRegistryItemResult> {
-  const trimmed = spec.trim();
+  const s = spec.trim();
 
-  if (trimmed.length === 0) {
+  if (s.length === 0) {
     throw new Error("Missing registry item spec");
   }
 
-  const embedded = await getEmbeddedRegistryItem(trimmed);
+  const embedded = await getEmbeddedRegistryItem(s);
   if (embedded) {
     return { item: embedded, source: `embedded:${embedded.kind}/${embedded.name}` };
   }
 
-  if (isProbablyUrl(trimmed)) {
-    const raw = await fetchJson(trimmed);
-    return { item: parseRegistryItemV1(raw), source: trimmed };
+  if (isUrl(s)) {
+    const raw = await fetchJSON(s);
+    return { item: parseV1(raw), source: s };
   }
 
-  if (looksLikeFilePath(trimmed)) {
-    const resolved = path.isAbsolute(trimmed)
-      ? trimmed
-      : path.resolve(opts.cwd, trimmed);
-    const rawText = await readFile(resolved, "utf8");
-    return { item: parseRegistryItemV1(JSON.parse(rawText)), source: resolved };
+  if (isPath(s)) {
+    const resolved = path.isAbsolute(s) ? s : path.resolve(opts.cwd, s);
+    const text = await readFile(resolved, "utf8");
+    return { item: parseV1(JSON.parse(text)), source: resolved };
   }
 
   throw new Error(
-    `Unknown registry spec: ${trimmed} (try embedded item, URL, or path to .json)`,
+    `Unknown registry spec: ${s} (try embedded item, URL, or path to .json)`,
   );
 }

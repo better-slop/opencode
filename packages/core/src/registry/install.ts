@@ -5,15 +5,15 @@ import type {
   ApplyInstallResult,
   ConfigRoot,
   InstallPlan,
-  OcxItemKind,
+  OCXItemKind,
 } from "./types";
-import type { ResolvedRegistryItem } from "./resolve";
+import type { ResolvedItem } from "./resolve";
 import {
   getTopLevelJsoncPropertyValueText,
   upsertTopLevelJsoncProperty,
 } from "./jsonc";
 
-type InstalledOcxItem = {
+type InstalledOCXItem = {
   source: string;
   dir: string;
   entry: string;
@@ -23,11 +23,11 @@ type InstalledOcxItem = {
   };
 };
 
-type OcxManagedConfig = {
-  items: Record<OcxItemKind, Record<string, InstalledOcxItem>>;
+type OCXManagedConfig = {
+  items: Record<OCXItemKind, Record<string, InstalledOCXItem>>;
 };
 
-function emptyOcxManagedConfig(): OcxManagedConfig {
+function emptyOCXManagedConfig(): OCXManagedConfig {
   return {
     items: {
       tool: {},
@@ -42,54 +42,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function ensureRecordMap(value: unknown): Record<string, InstalledOcxItem> {
+function ensureRecordMap(value: unknown): Record<string, InstalledOCXItem> {
   if (!isRecord(value)) return {};
-  return value as Record<string, InstalledOcxItem>;
+  return value as Record<string, InstalledOCXItem>;
 }
 
-function parseExistingOcxManagedConfig(configText: string): OcxManagedConfig {
-  const valueText = getTopLevelJsoncPropertyValueText(configText, "ocx");
-  if (!valueText) return emptyOcxManagedConfig();
+function parseExistingOCXManagedConfig(text: string): OCXManagedConfig {
+  const val = getTopLevelJsoncPropertyValueText(text, "ocx");
+  if (!val) return emptyOCXManagedConfig();
 
   try {
-    const parsed: unknown = JSON.parse(valueText);
-    if (!isRecord(parsed)) return emptyOcxManagedConfig();
+    const parsed: unknown = JSON.parse(val);
+    if (!isRecord(parsed)) return emptyOCXManagedConfig();
 
-    const itemsRaw = parsed.items;
-    const itemsRecord = isRecord(itemsRaw) ? itemsRaw : {};
+    const raw = parsed.items;
+    const items = isRecord(raw) ? raw : {};
 
     return {
       items: {
-        tool: ensureRecordMap(itemsRecord.tool),
-        agent: ensureRecordMap(itemsRecord.agent),
-        command: ensureRecordMap(itemsRecord.command),
-        themes: ensureRecordMap(itemsRecord.themes),
+        tool: ensureRecordMap(items.tool),
+        agent: ensureRecordMap(items.agent),
+        command: ensureRecordMap(items.command),
+        themes: ensureRecordMap(items.themes),
       },
     };
   } catch {
-    return emptyOcxManagedConfig();
+    return emptyOCXManagedConfig();
   }
 }
 
-function normalizeRegistryRelativePath(p: string): string {
-  const normalized = path.posix.normalize(p).replace(/^\.\//, "");
+function normalizeRelPath(p: string): string {
+  const norm = path.posix.normalize(p).replace(/^\.\//, "");
 
-  if (path.posix.isAbsolute(normalized)) {
+  if (path.posix.isAbsolute(norm)) {
     throw new Error(`Registry file path must be relative: ${p}`);
   }
 
-  if (normalized === ".." || normalized.startsWith("../")) {
+  if (norm === ".." || norm.startsWith("../")) {
     throw new Error(`Registry file path cannot escape target dir: ${p}`);
   }
 
-  if (normalized.length === 0) {
+  if (norm.length === 0) {
     throw new Error("Registry file path cannot be empty");
   }
 
-  return normalized;
+  return norm;
 }
 
-function computeDirRel(configRoot: ConfigRoot, kind: OcxItemKind, name: string): string {
+function computeDirRel(configRoot: ConfigRoot, kind: OCXItemKind, name: string): string {
   const parts = configRoot.kind === "project"
     ? [".opencode", kind, name]
     : [kind, name];
@@ -107,7 +107,7 @@ async function pathExists(p: string): Promise<boolean> {
 }
 
 export function planInstalls(
-  resolved: ResolvedRegistryItem[],
+  resolved: ResolvedItem[],
   configRoot: ConfigRoot,
 ): InstallPlan[] {
   return resolved.map(({ item, source }) => {
@@ -115,12 +115,12 @@ export function planInstalls(
     const targetDir = path.join(kindDir, item.name);
 
     const dirRel = computeDirRel(configRoot, item.kind, item.name);
-    const entryFile = normalizeRegistryRelativePath(item.entry ?? "index.ts");
+    const entryFile = normalizeRelPath(item.entry ?? "index.ts");
     const entryRel = `${dirRel}/${entryFile}`;
 
     const mkdirSet = new Set<string>([configRoot.opencodeDir, kindDir, targetDir]);
     const writes = item.files.map((file) => {
-      const rel = normalizeRegistryRelativePath(file.path);
+      const rel = normalizeRelPath(file.path);
       const dest = path.join(targetDir, ...rel.split("/"));
       mkdirSet.add(path.dirname(dest));
       return { path: dest, content: file.content, mode: file.mode };
@@ -172,27 +172,27 @@ async function ensureDirs(dirs: string[]): Promise<void> {
   }
 }
 
-async function writeFileAtomic(destPath: string, content: string): Promise<void> {
-  const dir = path.dirname(destPath);
+async function writeAtomic(dest: string, content: string): Promise<void> {
+  const dir = path.dirname(dest);
   await mkdir(dir, { recursive: true });
 
-  const tmpBase = path.join(dir, `.tmp-ocx-${Date.now()}-`);
-  const tmpPath = await mkdtemp(tmpBase);
-  const tmpFile = path.join(tmpPath, "file");
+  const base = path.join(dir, `.tmp-ocx-${Date.now()}-`);
+  const tmp = await mkdtemp(base);
+  const file = path.join(tmp, "file");
 
-  await Bun.write(tmpFile, content);
-  await rename(tmpFile, destPath);
-  await rm(tmpPath, { recursive: true, force: true });
+  await Bun.write(file, content);
+  await rename(file, dest);
+  await rm(tmp, { recursive: true, force: true });
 }
 
-async function stageDirectory(
+async function stageDir(
   plan: InstallPlan,
   overwrite: boolean,
 ): Promise<string> {
-  const kindDir = path.dirname(plan.item.targetDir);
-  await mkdir(kindDir, { recursive: true });
+  const dir = path.dirname(plan.item.targetDir);
+  await mkdir(dir, { recursive: true });
 
-  const tmpDir = await mkdtemp(path.join(kindDir, `.tmp-ocx-${plan.item.name}-`));
+  const tmp = await mkdtemp(path.join(dir, `.tmp-ocx-${plan.item.name}-`));
 
   try {
     for (const w of plan.writes) {
@@ -201,18 +201,13 @@ async function stageDirectory(
         throw new Error(`Refusing to write outside target dir: ${w.path}`);
       }
 
-      const destInTmp = path.join(tmpDir, rel);
-      await mkdir(path.dirname(destInTmp), { recursive: true });
-      await Bun.write(destInTmp, w.content);
-
-      if (w.mode) {
-        // Bun doesn't expose chmod directly; use shelling via fs if needed later.
-        // For now, keep modes as metadata only.
-      }
+      const dest = path.join(tmp, rel);
+      await mkdir(path.dirname(dest), { recursive: true });
+      await Bun.write(dest, w.content);
     }
 
-    const targetExists = await pathExists(plan.item.targetDir);
-    if (targetExists) {
+    const exists = await pathExists(plan.item.targetDir);
+    if (exists) {
       if (!overwrite) {
         throw new Error(
           `Target already exists: ${plan.item.targetDir} (use --overwrite)`,
@@ -221,50 +216,44 @@ async function stageDirectory(
       await rm(plan.item.targetDir, { recursive: true, force: true });
     }
 
-    await rename(tmpDir, plan.item.targetDir);
+    await rename(tmp, plan.item.targetDir);
     return plan.item.targetDir;
   } catch (err) {
-    await rm(tmpDir, { recursive: true, force: true });
+    await rm(tmp, { recursive: true, force: true });
     throw err;
   }
 }
 
-async function updateOpencodeConfig(
-  configPath: string,
+async function updateConfig(
+  path: string,
   plans: InstallPlan[],
 ): Promise<void> {
-  const existingText = await Bun.file(configPath).text().catch(() => "{}");
+  const text = await Bun.file(path).text().catch(() => "{}");
 
-  const existing = parseExistingOcxManagedConfig(existingText);
+  const cfg = parseExistingOCXManagedConfig(text);
 
   for (const plan of plans) {
-    const kind = plan.item.kind;
-    const name = plan.item.name;
+    const { kind, name, source, entryRel } = plan.item;
+    const dir = entryRel.split("/").slice(0, -1).join("/");
 
-    const dirRel = plan.item.entryRel.split("/").slice(0, -1).join("/");
-
-    const entry = plan.item.entryRel;
-
-    const nextItem: InstalledOcxItem = {
-      source: plan.item.source,
-      dir: dirRel,
-      entry,
+    cfg.items[kind][name] = {
+      source,
+      dir,
+      entry: entryRel,
       ...(plan.postinstall ? { postinstall: plan.postinstall } : {}),
     };
-
-    existing.items[kind][name] = nextItem;
   }
 
-  const updatedText = upsertTopLevelJsoncProperty(existingText, "ocx", existing);
-  await writeFileAtomic(configPath, updatedText);
+  const updated = upsertTopLevelJsoncProperty(text, "ocx", cfg);
+  await writeAtomic(path, updated);
 }
 
 async function runPostinstall(plan: InstallPlan): Promise<void> {
   if (!plan.postinstall) return;
 
-  for (const command of plan.postinstall.commands) {
-    const child = Bun.spawn({
-      cmd: ["bash", "-lc", command],
+  for (const cmd of plan.postinstall.commands) {
+    const proc = Bun.spawn({
+      cmd: ["bash", "-lc", cmd],
       cwd: plan.postinstall.cwd,
       stdout: "inherit",
       stderr: "inherit",
@@ -274,11 +263,9 @@ async function runPostinstall(plan: InstallPlan): Promise<void> {
       },
     });
 
-    const exitCode = await child.exited;
-    if (exitCode !== 0) {
-      throw new Error(
-        `Postinstall command failed (${exitCode}): ${command}`,
-      );
+    const code = await proc.exited;
+    if (code !== 0) {
+      throw new Error(`Postinstall command failed (${code}): ${cmd}`);
     }
   }
 }
@@ -294,34 +281,34 @@ export async function applyInstallPlans(
     throw new Error("No install plans to apply");
   }
 
-  const configRoot = plans[0]?.configRoot;
-  if (!configRoot) throw new Error("Missing config root");
+  const root = plans[0]?.configRoot;
+  if (!root) throw new Error("Missing config root");
 
-  await ensureDirs([configRoot.opencodeDir]);
+  await ensureDirs([root.opencodeDir]);
 
-  const wroteFiles: string[] = [];
+  const wrote: string[] = [];
 
   for (const plan of plans) {
-    const installedDir = await stageDirectory(plan, opts.overwrite);
-    wroteFiles.push(installedDir);
+    const dir = await stageDir(plan, opts.overwrite);
+    wrote.push(dir);
   }
 
-  await ensureDirs([path.dirname(configRoot.configPath)]);
-  await updateOpencodeConfig(configRoot.configPath, plans);
+  await ensureDirs([path.dirname(root.configPath)]);
+  await updateConfig(root.configPath, plans);
 
-  let ranPostinstall = false;
+  let ran = false;
   if (opts.allowPostinstall) {
     for (const plan of plans) {
       if (!plan.postinstall) continue;
-      ranPostinstall = true;
+      ran = true;
       await runPostinstall(plan);
     }
   }
 
   return {
-    wroteFiles,
-    editedConfigPath: configRoot.configPath,
-    ranPostinstall,
+    wroteFiles: wrote,
+    editedConfigPath: root.configPath,
+    ranPostinstall: ran,
   };
 }
 

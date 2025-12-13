@@ -9,28 +9,26 @@ import {
   resolveRegistryTree,
 } from "@better-slop/core/registry";
 
-// Global options shared across commands
-type GlobalOptions = {
+type GlobalOpts = {
   cwd: string;
 };
 
-// Options specific to the 'add' command
-type AddOptions = GlobalOptions & {
+type AddOpts = GlobalOpts & {
   spec: string[];
   overwrite: boolean;
   "allow-postinstall": boolean;
 };
 
-type InstallPlan = ReturnType<typeof planInstalls>[number];
+type Plan = ReturnType<typeof planInstalls>[number];
 
-function printPostinstallPreview(plans: InstallPlan[]): void {
-  const withHooks = plans.filter(
+function printHooks(plans: Plan[]): void {
+  const with_hooks = plans.filter(
     (p) => p.postinstall && p.postinstall.commands.length > 0,
   );
-  if (withHooks.length === 0) return;
+  if (with_hooks.length === 0) return;
 
   console.log("\nPostinstall hooks detected (skipped unless --allow-postinstall):");
-  for (const p of withHooks) {
+  for (const p of with_hooks) {
     console.log(`- ${p.item.kind}/${p.item.name}`);
     for (const cmd of p.postinstall?.commands ?? []) {
       console.log(`  - ${cmd}`);
@@ -38,20 +36,20 @@ function printPostinstallPreview(plans: InstallPlan[]): void {
   }
 }
 
-async function runAdd(argv: ArgumentsCamelCase<AddOptions>): Promise<void> {
-  const configRoot = await resolveConfigRoot(argv.cwd);
+async function runAdd(argv: ArgumentsCamelCase<AddOpts>): Promise<void> {
+  const root = await resolveConfigRoot(argv.cwd);
   const resolved = await resolveRegistryTree(argv.spec, { cwd: argv.cwd });
-  const plans = planInstalls(resolved, configRoot);
+  const plans = planInstalls(resolved, root);
 
-  const fileCount = plans.reduce((sum, p) => sum + p.writes.length, 0);
-  const hasHooks = plans.some(
+  const files = plans.reduce((sum, p) => sum + p.writes.length, 0);
+  const hooks = plans.some(
     (p) => p.postinstall && p.postinstall.commands.length > 0,
   );
 
-  console.log(`Config: ${configRoot.configPath}`);
-  console.log(`Install root: ${configRoot.opencodeDir} (${configRoot.kind})`);
+  console.log(`Config: ${root.configPath}`);
+  console.log(`Install root: ${root.opencodeDir} (${root.kind})`);
   console.log(
-    `Files: ${fileCount}  Overwrite: ${argv.overwrite ? "yes" : "no"}  Postinstall: ${argv.allowPostinstall ? "run" : "skip"}`,
+    `Files: ${files}  Overwrite: ${argv.overwrite ? "yes" : "no"}  Postinstall: ${argv.allowPostinstall ? "run" : "skip"}`,
   );
 
   console.log("Items:");
@@ -59,8 +57,8 @@ async function runAdd(argv: ArgumentsCamelCase<AddOptions>): Promise<void> {
     console.log(`- ${p.item.kind}/${p.item.name} (${p.item.source})`);
   }
 
-  printPostinstallPreview(plans);
-  if (hasHooks && !argv.allowPostinstall) {
+  printHooks(plans);
+  if (hooks && !argv.allowPostinstall) {
     console.log("\nRe-run with --allow-postinstall to execute hooks.");
   }
 
@@ -90,7 +88,7 @@ const cli = yargs(hideBin(process.argv))
     global: true,
     describe: "Working directory",
   })
-  .command<AddOptions>({
+  .command<AddOpts>({
     command: "add <spec..>",
     describe: "Add specs (embedded names, URLs, or paths to .json manifests)",
     builder: (y) =>

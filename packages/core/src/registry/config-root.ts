@@ -3,75 +3,75 @@ import path from "node:path";
 import { stat } from "node:fs/promises";
 import type { ConfigRoot } from "./types";
 
-async function pathIsDirectory(dirPath: string): Promise<boolean> {
+async function isDir(p: string): Promise<boolean> {
   try {
-    const s = await stat(dirPath);
+    const s = await stat(p);
     return s.isDirectory();
   } catch {
     return false;
   }
 }
 
-function normalizeAbsolutePath(p: string): string {
+function normalize(p: string): string {
   return path.resolve(p);
 }
 
-function isInsideDir(absoluteChildPath: string, absoluteParentDir: string): boolean {
-  const child = normalizeAbsolutePath(absoluteChildPath);
-  const parent = normalizeAbsolutePath(absoluteParentDir);
+function isInside(child: string, parent: string): boolean {
+  const c = normalize(child);
+  const p = normalize(parent);
 
   // TODO: windows support (drive letters + case-insensitive filesystems)
 
-  const parentWithSep = parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`;
-  return child === parent || child.startsWith(parentWithSep);
+  const sep = p.endsWith(path.sep) ? p : `${p}${path.sep}`;
+  return c === p || c.startsWith(sep);
 }
 
-async function findNearestProjectRoot(startCwd: string): Promise<string> {
-  let current = normalizeAbsolutePath(startCwd);
+async function findProjectRoot(cwd: string): Promise<string> {
+  let cur = normalize(cwd);
 
   while (true) {
-    const candidate = path.join(current, ".opencode");
-    if (await pathIsDirectory(candidate)) {
-      return current;
+    const candidate = path.join(cur, ".opencode");
+    if (await isDir(candidate)) {
+      return cur;
     }
 
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return normalizeAbsolutePath(startCwd);
+    const parent = path.dirname(cur);
+    if (parent === cur) {
+      return normalize(cwd);
     }
-    current = parent;
+    cur = parent;
   }
 }
 
 export async function resolveConfigRoot(
   cwd: string,
-  homedir = os.homedir(),
+  home = os.homedir(),
 ): Promise<ConfigRoot> {
-  const absoluteCwd = normalizeAbsolutePath(cwd);
+  const abs = normalize(cwd);
 
-  const globalConfigDirs = [
-    path.join(homedir, ".config", "opencode"),
-    path.join(homedir, ".opencode"),
+  const globals = [
+    path.join(home, ".config", "opencode"),
+    path.join(home, ".opencode"),
   ];
 
-  for (const globalDir of globalConfigDirs) {
-    if (isInsideDir(absoluteCwd, globalDir)) {
+  for (const dir of globals) {
+    if (isInside(abs, dir)) {
       return {
         kind: "global",
-        rootDir: globalDir,
-        opencodeDir: globalDir,
-        configPath: path.join(globalDir, "opencode.jsonc"),
+        rootDir: dir,
+        opencodeDir: dir,
+        configPath: path.join(dir, "opencode.jsonc"),
       };
     }
   }
 
-  const projectRoot = await findNearestProjectRoot(absoluteCwd);
-  const opencodeDir = path.join(projectRoot, ".opencode");
+  const root = await findProjectRoot(abs);
+  const dir = path.join(root, ".opencode");
 
   return {
     kind: "project",
-    rootDir: projectRoot,
-    opencodeDir,
-    configPath: path.join(opencodeDir, "opencode.jsonc"),
+    rootDir: root,
+    opencodeDir: dir,
+    configPath: path.join(dir, "opencode.jsonc"),
   };
 }
