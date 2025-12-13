@@ -1,118 +1,156 @@
 import path from "node:path";
-import { readFile } from "node:fs/promises";
-import { getEmbeddedRegistryItem } from "./embedded";
+import { Effect } from "effect";
+import { getEmbeddedRegistryItemEffect } from "./embedded";
+import type { FetchRegistryItemError, RegistryItemParseError } from "./errors";
+import { err, ok, runEffect, toEffect, type Result } from "./result";
 import type { RegistryItem, RegistryItemV1 } from "./types";
+
+function parseError(message: string): RegistryItemParseError {
+  return { _tag: "RegistryItemParseError", message };
+}
+
+function embeddedReadFailed(name: string, cause: unknown): FetchRegistryItemError {
+  return { _tag: "EmbeddedReadFailed", name, cause };
+}
+
+function fetchFailed(url: string, status?: number, cause?: unknown): FetchRegistryItemError {
+  return { _tag: "FetchFailed", url, status, cause };
+}
+
+function fileReadFailed(p: string, cause: unknown): FetchRegistryItemError {
+  return { _tag: "FileReadFailed", path: p, cause };
+}
+
+function jsonParseFailed(source: string, cause: unknown): FetchRegistryItemError {
+  return { _tag: "JSONParseFailed", source, cause };
+}
+
+function missingSpec(): FetchRegistryItemError {
+  return { _tag: "MissingSpec" };
+}
+
+function unknownSpec(spec: string): FetchRegistryItemError {
+  return { _tag: "UnknownSpec", spec };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function asStringArray(val: unknown, field: string): string[] {
-  if (val === undefined) return [];
+function parseStringArray(
+  val: unknown,
+  field: string,
+): Result<string[], RegistryItemParseError> {
+  if (val === undefined) return ok([]);
+
   if (!Array.isArray(val) || val.some((v) => typeof v !== "string")) {
-    throw new Error(`Invalid registry item: ${field} must be string[]`);
+    return err(parseError(`Invalid registry item: ${field} must be string[]`));
   }
-  return val;
+
+  return ok(val);
 }
 
-function parseV1(raw: unknown): RegistryItemV1 {
-  if (!isRecord(raw)) throw new Error("Invalid registry item: expected object");
+function parseOptionalString(
+  val: unknown,
+  field: string,
+): Result<string | undefined, RegistryItemParseError> {
+  if (val === undefined) return ok(undefined);
+  if (typeof val === "string") return ok(val);
+  return err(parseError(`Invalid registry item: ${field} must be string`));
+}
+
+function parseV1(raw: unknown): Result<RegistryItemV1, RegistryItemParseError> {
+  if (!isRecord(raw)) return err(parseError("Invalid registry item: expected object"));
 
   const ver = raw.schemaVersion;
   if (ver !== 1) {
-    throw new Error("Invalid registry item: unsupported schemaVersion");
+    return err(parseError("Invalid registry item: unsupported schemaVersion"));
   }
 
   const kind = raw.kind;
   if (kind !== "tool" && kind !== "agent" && kind !== "command" && kind !== "themes") {
-    throw new Error("Invalid registry item: unsupported kind");
+    return err(parseError("Invalid registry item: unsupported kind"));
   }
 
   const name = raw.name;
   if (typeof name !== "string" || name.trim().length === 0) {
-    throw new Error("Invalid registry item: name must be a non-empty string");
+    return err(parseError("Invalid registry item: name must be a non-empty string"));
   }
 
-  const desc =
-    raw.description === undefined
-      ? undefined
-      : typeof raw.description === "string"
-        ? raw.description
-        : (() => {
-            throw new Error("Invalid registry item: description must be string");
-          })();
+  const descRes = parseOptionalString(raw.description, "description");
+  if (descRes._tag === "Err") return descRes;
+
+  const depsRes = parseStringArray(raw.registryDependencies, "registryDependencies");
+  if (depsRes._tag === "Err") return depsRes;
 
   const filesRaw = raw.files;
   if (!Array.isArray(filesRaw)) {
-    throw new Error("Invalid registry item: files must be an array");
+    return err(parseError("Invalid registry item: files must be an array"));
   }
 
-  const files = filesRaw.map((f) => {
-    if (!isRecord(f)) throw new Error("Invalid registry item: file must be object");
+  const files: RegistryItemV1["files"] = [];
+
+  for (const f of filesRaw) {
+    if (!isRecord(f)) return err(parseError("Invalid registry item: file must be object"));
+
     const p = f.path;
     const content = f.content;
 
     if (typeof p !== "string" || p.length === 0) {
-      throw new Error("Invalid registry item: file.path must be string");
+      return err(parseError("Invalid registry item: file.path must be string"));
     }
 
     if (typeof content !== "string") {
-      throw new Error("Invalid registry item: file.content must be string");
+      return err(parseError("Invalid registry item: file.content must be string"));
     }
 
     const m = f.mode;
-    let mode: "0644" | "0755" | undefined;
-
     if (m === undefined) {
-      mode = undefined;
-    } else if (m === "0644" || m === "0755") {
-      mode = m;
-    } else {
-      throw new Error("Invalid registry item: file.mode must be 0644|0755");
+      files.push({ path: p, content });
+      continue;
     }
 
-    return mode ? { path: p, content, mode } : { path: p, content };
-  });
+    if (m !== "0644" && m !== "0755") {
+      return err(parseError("Invalid registry item: file.mode must be 0644|0755"));
+    }
 
-  const entryRaw = raw.entry;
-  const entry =
-    entryRaw === undefined
-      ? undefined
-      : typeof entryRaw === "string"
-        ? entryRaw
-        : (() => {
-            throw new Error("Invalid registry item: entry must be string");
-          })();
+    files.push({ path: p, content, mode: m });
+  }
+
+  const entryRes = parseOptionalString(raw.entry, "entry");
+  if (entryRes._tag === "Err") return entryRes;
 
   const post = raw.postinstall;
-  const postinstall =
-    post === undefined
-      ? undefined
-      : (() => {
-          if (!isRecord(post)) {
-            throw new Error("Invalid registry item: postinstall must be object");
-          }
-          const cmds = post.commands;
-          if (!Array.isArray(cmds) || cmds.some((c) => typeof c !== "string")) {
-            throw new Error("Invalid registry item: postinstall.commands must be string[]");
-          }
-          const cwd = post.cwd;
-          if (cwd !== undefined && typeof cwd !== "string") {
-            throw new Error("Invalid registry item: postinstall.cwd must be string");
-          }
-          return { commands: cmds, cwd };
-        })();
+  let postinstall: RegistryItemV1["postinstall"];
 
-  return {
+  if (post === undefined) {
+    postinstall = undefined;
+  } else {
+    if (!isRecord(post)) {
+      return err(parseError("Invalid registry item: postinstall must be object"));
+    }
+
+    const cmds = post.commands;
+    if (!Array.isArray(cmds) || cmds.some((c) => typeof c !== "string")) {
+      return err(parseError("Invalid registry item: postinstall.commands must be string[]"));
+    }
+
+    const cwdRes = parseOptionalString(post.cwd, "postinstall.cwd");
+    if (cwdRes._tag === "Err") return cwdRes;
+
+    postinstall = { commands: cmds, cwd: cwdRes.value };
+  }
+
+  return ok({
     schemaVersion: 1,
     kind,
     name,
-    description: desc,
-    registryDependencies: asStringArray(raw.registryDependencies, "registryDependencies"),
+    description: descRes.value,
+    registryDependencies: depsRes.value,
     files,
-    entry,
+    entry: entryRes.value,
     postinstall,
-  };
+  });
 }
 
 function isUrl(spec: string): boolean {
@@ -123,12 +161,36 @@ function isPath(spec: string): boolean {
   return spec.startsWith("/") || spec.startsWith("./") || spec.startsWith("../") || spec.endsWith(".json");
 }
 
-async function fetchJSON(url: string): Promise<unknown> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch registry item: ${url} (${res.status})`);
-  }
-  return await res.json();
+function fetchJSONEffect(url: string): Effect.Effect<unknown, FetchRegistryItemError> {
+  return Effect.tryPromise({
+    try: () => fetch(url),
+    catch: (cause): FetchRegistryItemError => fetchFailed(url, undefined, cause),
+  }).pipe(
+    Effect.flatMap((res) => {
+      if (!res.ok) {
+        return Effect.fail(fetchFailed(url, res.status));
+      }
+
+      return Effect.tryPromise({
+        try: () => res.json(),
+        catch: (cause): FetchRegistryItemError => jsonParseFailed(url, cause),
+      });
+    }),
+  );
+}
+
+function readTextEffect(p: string): Effect.Effect<string, FetchRegistryItemError> {
+  return Effect.tryPromise({
+    try: () => Bun.file(p).text(),
+    catch: (cause): FetchRegistryItemError => fileReadFailed(p, cause),
+  });
+}
+
+function parseJsonEffect(text: string, source: string): Effect.Effect<unknown, FetchRegistryItemError> {
+  return Effect.try({
+    try: () => JSON.parse(text) as unknown,
+    catch: (cause): FetchRegistryItemError => jsonParseFailed(source, cause),
+  });
 }
 
 export type FetchRegistryItemResult = {
@@ -136,33 +198,51 @@ export type FetchRegistryItemResult = {
   source: string;
 };
 
-export async function fetchRegistryItem(
+export function fetchRegistryItemEffect(
   spec: string,
   opts: { cwd: string },
-): Promise<FetchRegistryItemResult> {
+): Effect.Effect<FetchRegistryItemResult, FetchRegistryItemError> {
   const s = spec.trim();
 
   if (s.length === 0) {
-    throw new Error("Missing registry item spec");
+    return Effect.fail(missingSpec());
   }
 
-  const embedded = await getEmbeddedRegistryItem(s);
-  if (embedded) {
-    return { item: embedded, source: `embedded:${embedded.kind}/${embedded.name}` };
-  }
+  return getEmbeddedRegistryItemEffect(s).pipe(
+    Effect.mapError((e): FetchRegistryItemError => embeddedReadFailed(e.name, e.cause)),
+    Effect.flatMap((embedded) => {
+      if (embedded) {
+        return Effect.succeed({
+          item: embedded,
+          source: `embedded:${embedded.kind}/${embedded.name}`,
+        });
+      }
 
-  if (isUrl(s)) {
-    const raw = await fetchJSON(s);
-    return { item: parseV1(raw), source: s };
-  }
+      if (isUrl(s)) {
+        return fetchJSONEffect(s).pipe(
+          Effect.flatMap((raw) => toEffect(parseV1(raw))),
+          Effect.map((item) => ({ item, source: s })),
+        );
+      }
 
-  if (isPath(s)) {
-    const resolved = path.isAbsolute(s) ? s : path.resolve(opts.cwd, s);
-    const text = await readFile(resolved, "utf8");
-    return { item: parseV1(JSON.parse(text)), source: resolved };
-  }
+      if (isPath(s)) {
+        const resolved = path.isAbsolute(s) ? s : path.resolve(opts.cwd, s);
 
-  throw new Error(
-    `Unknown registry spec: ${s} (try embedded item, URL, or path to .json)`,
+        return readTextEffect(resolved).pipe(
+          Effect.flatMap((text) => parseJsonEffect(text, resolved)),
+          Effect.flatMap((raw) => toEffect(parseV1(raw))),
+          Effect.map((item) => ({ item, source: resolved })),
+        );
+      }
+
+      return Effect.fail(unknownSpec(s));
+    }),
   );
+}
+
+export async function fetchRegistryItem(
+  spec: string,
+  opts: { cwd: string },
+): Promise<Result<FetchRegistryItemResult, FetchRegistryItemError>> {
+  return runEffect(fetchRegistryItemEffect(spec, opts));
 }

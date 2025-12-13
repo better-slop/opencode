@@ -11,7 +11,8 @@
     "@opencode-ai/plugin": "latest",
     "@types/bun": "latest",
     "typescript": "5.9.3",
-    "handlebars": "4.7.8"
+    "handlebars": "4.7.8",
+    "effect": "latest"
   },
   "scripts": {
     "compile:scripts": "bun build scripts/* --compile --out dist/scripts",

@@ -13,7 +13,8 @@
     }
   },
   "dependencies": {
-    "@opencode-ai/plugin": "catalog:"
+    "@opencode-ai/plugin": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@better-slop-internals/tsconfig": "workspace:*",

@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+
 export type Ok<T> = {
   _tag: "Ok";
   value: T;
@@ -47,17 +49,25 @@ export function mapError<T, E1, E2>(
   return err(fn(res.error));
 }
 
-export function trySync<T, E>(fn: () => T, onError: (cause: unknown) => E): Result<T, E> {
-  try {
-    return ok(fn());
-  } catch (cause) {
-    return err(onError(cause));
-  }
-}
-
 export async function tryPromise<T, E>(
   fn: () => Promise<T>,
   onError: (cause: unknown) => E,
 ): Promise<Result<T, E>> {
   return fn().then(ok).catch((cause) => err(onError(cause)));
+}
+
+export function toEffect<T, E>(res: Result<T, E>): Effect.Effect<T, E> {
+  if (res._tag === "Ok") return Effect.succeed(res.value);
+  return Effect.fail(res.error);
+}
+
+export async function runEffect<T, E>(eff: Effect.Effect<T, E>): Promise<Result<T, E>> {
+  return Effect.runPromise(
+    eff.pipe(
+      Effect.match({
+        onFailure: (error) => err(error),
+        onSuccess: (value) => ok(value),
+      }),
+    ),
+  );
 }

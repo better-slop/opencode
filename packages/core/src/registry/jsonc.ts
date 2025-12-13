@@ -1,3 +1,6 @@
+import type { JSONCError } from "./errors";
+import { err, ok, type Result } from "./result";
+
 type Quote = "\"" | "'";
 
 type State = {
@@ -7,6 +10,16 @@ type State = {
   inLineComment: boolean;
   inBlockComment: boolean;
 };
+
+type JSONCResult<T> = Result<T, JSONCError>;
+
+function jsoncError(message: string): JSONCError {
+  return { _tag: "JSONCError", message };
+}
+
+function fail<T>(message: string): JSONCResult<T> {
+  return err(jsoncError(message));
+}
 
 function createState(): State {
   return {
@@ -69,7 +82,7 @@ function findClose(
   open: number,
   openChar: "{" | "[",
   closeChar: "}" | "]",
-): number {
+): JSONCResult<number> {
   const st = createState();
   let depth = 0;
 
@@ -127,18 +140,18 @@ function findClose(
     if (ch === openChar) depth += 1;
     if (ch === closeChar) depth -= 1;
 
-    if (depth === 0) return i;
+    if (depth === 0) return ok(i);
   }
 
-  throw new Error("Unterminated JSONC structure");
+  return fail("Unterminated JSONC structure");
 }
 
-function parseStringToken(text: string, startIndex: number): {
+function parseStringToken(text: string, startIndex: number): JSONCResult<{
   value: string;
   endIndex: number;
-} {
+}> {
   const q = text[startIndex] ?? "";
-  if (!isQuote(q)) throw new Error("Expected string token");
+  if (!isQuote(q)) return fail("Expected string token");
 
   let value = "";
   let escaped = false;
@@ -158,19 +171,19 @@ function parseStringToken(text: string, startIndex: number): {
     }
 
     if (ch === q) {
-      return { value, endIndex: i + 1 };
+      return ok({ value, endIndex: i + 1 });
     }
 
     value += ch;
   }
 
-  throw new Error("Unterminated string token");
+  return fail("Unterminated string token");
 }
 
-function parseIdentifierToken(text: string, startIndex: number): {
+function parseIdentifierToken(text: string, startIndex: number): JSONCResult<{
   value: string;
   endIndex: number;
-} {
+}> {
   let value = "";
   let i = startIndex;
 
@@ -188,17 +201,31 @@ function parseIdentifierToken(text: string, startIndex: number): {
     i += 1;
   }
 
-  if (value.length === 0) throw new Error("Expected identifier token");
+  if (value.length === 0) return fail("Expected identifier token");
 
-  return { value, endIndex: i };
+  return ok({ value, endIndex: i });
 }
 
-function findValueEnd(text: string, valueStart: number): number {
+function findValueEnd(text: string, valueStart: number): JSONCResult<number> {
   const first = text[valueStart] ?? "";
 
-  if (first === "{") return findClose(text, valueStart, "{", "}") + 1;
-  if (first === "[") return findClose(text, valueStart, "[", "]") + 1;
-  if (isQuote(first)) return parseStringToken(text, valueStart).endIndex;
+  if (first === "{") {
+    const close = findClose(text, valueStart, "{", "}");
+    if (close._tag === "Err") return close;
+    return ok(close.value + 1);
+  }
+
+  if (first === "[") {
+    const close = findClose(text, valueStart, "[", "]");
+    if (close._tag === "Err") return close;
+    return ok(close.value + 1);
+  }
+
+  if (isQuote(first)) {
+    const tok = parseStringToken(text, valueStart);
+    if (tok._tag === "Err") return tok;
+    return ok(tok.value.endIndex);
+  }
 
   const state = createState();
   let depth = 0;
@@ -256,17 +283,17 @@ function findValueEnd(text: string, valueStart: number): number {
 
     if (ch === "{" || ch === "[") depth += 1;
     if (ch === "}" || ch === "]") {
-      if (depth === 0) return i;
+      if (depth === 0) return ok(i);
       depth -= 1;
       continue;
     }
 
     if (depth === 0 && (ch === "," || ch === "}" || ch === "]")) {
-      return i;
+      return ok(i);
     }
   }
 
-  return text.length;
+  return ok(text.length);
 }
 
 function findTopLevelPropertyValueSpan(
@@ -274,34 +301,36 @@ function findTopLevelPropertyValueSpan(
   rootOpenIndex: number,
   rootCloseIndex: number,
   propertyName: string,
-): null | { valueStart: number; valueEnd: number } {
+): JSONCResult<null | { valueStart: number; valueEnd: number }> {
   let i = rootOpenIndex + 1;
 
   while (i < rootCloseIndex) {
     i = skip(text, i);
-    if (i >= rootCloseIndex) return null;
+    if (i >= rootCloseIndex) return ok(null);
 
     const ch = text[i] ?? "";
-    if (ch === "}") return null;
+    if (ch === "}") return ok(null);
 
-    const keyToken = isQuote(ch)
-      ? parseStringToken(text, i)
-      : parseIdentifierToken(text, i);
+    const keyTokenRes = isQuote(ch) ? parseStringToken(text, i) : parseIdentifierToken(text, i);
+    if (keyTokenRes._tag === "Err") return keyTokenRes;
 
-    const key = keyToken.value;
-    i = skip(text, keyToken.endIndex);
+    const key = keyTokenRes.value.value;
+    i = skip(text, keyTokenRes.value.endIndex);
 
     if ((text[i] ?? "") !== ":") {
-      throw new Error("Invalid JSONC object: expected ':' after property key");
+      return fail("Invalid JSONC object: expected ':' after property key");
     }
 
     i = skip(text, i + 1);
 
     const valueStart = i;
-    const valueEnd = findValueEnd(text, valueStart);
+    const valueEndRes = findValueEnd(text, valueStart);
+    if (valueEndRes._tag === "Err") return valueEndRes;
+
+    const valueEnd = valueEndRes.value;
 
     if (key === propertyName) {
-      return { valueStart, valueEnd };
+      return ok({ valueStart, valueEnd });
     }
 
     i = valueEnd;
@@ -309,7 +338,7 @@ function findTopLevelPropertyValueSpan(
     if ((text[i] ?? "") === ",") i += 1;
   }
 
-  return null;
+  return ok(null);
 }
 
 function hasAnyProperties(text: string, rootOpenIndex: number, rootCloseIndex: number): boolean {
@@ -382,63 +411,79 @@ function lastSignificantChar(text: string, endIndex: number): string {
   return last;
 }
 
-function formatValueForProperty(value: unknown): string {
+function formatValueForProperty(value: unknown): JSONCResult<string> {
   const json = JSON.stringify(value, null, 2);
-  if (json === undefined) throw new Error("Unable to stringify JSON value");
+  if (json === undefined) return fail("Unable to stringify JSON value");
 
-  return json.replaceAll("\n", "\n  ");
+  return ok(json.replaceAll("\n", "\n  "));
 }
 
 export function getTopLevelJsoncPropertyValueText(
   inputText: string,
   propertyName: string,
-): string | null {
+): JSONCResult<string | null> {
   const original = inputText.length === 0 ? "{}" : inputText;
   const first = skip(original, 0);
 
   if ((original[first] ?? "") !== "{") {
-    throw new Error("Expected JSONC root object");
+    return fail("Expected JSONC root object");
   }
 
   const rootOpenIndex = first;
-  const rootCloseIndex = findClose(original, rootOpenIndex, "{", "}");
+  const rootCloseRes = findClose(original, rootOpenIndex, "{", "}");
+  if (rootCloseRes._tag === "Err") return rootCloseRes;
 
-  const span = findTopLevelPropertyValueSpan(
+  const rootCloseIndex = rootCloseRes.value;
+
+  const spanRes = findTopLevelPropertyValueSpan(
     original,
     rootOpenIndex,
     rootCloseIndex,
     propertyName,
   );
+  if (spanRes._tag === "Err") return spanRes;
 
-  return span ? original.slice(span.valueStart, span.valueEnd) : null;
+  const span = spanRes.value;
+  return ok(span ? original.slice(span.valueStart, span.valueEnd) : null);
 }
 
 export function upsertTopLevelJsoncProperty(
   inputText: string,
   propertyName: string,
   propertyValue: unknown,
-): string {
+): JSONCResult<string> {
   const original = inputText.length === 0 ? "{}" : inputText;
   const first = skip(original, 0);
 
   if ((original[first] ?? "") !== "{") {
-    throw new Error("Expected JSONC root object");
+    return fail("Expected JSONC root object");
   }
 
   const rootOpenIndex = first;
-  const rootCloseIndex = findClose(original, rootOpenIndex, "{", "}");
+  const rootCloseRes = findClose(original, rootOpenIndex, "{", "}");
+  if (rootCloseRes._tag === "Err") return rootCloseRes;
 
-  const span = findTopLevelPropertyValueSpan(
+  const rootCloseIndex = rootCloseRes.value;
+
+  const spanRes = findTopLevelPropertyValueSpan(
     original,
     rootOpenIndex,
     rootCloseIndex,
     propertyName,
   );
+  if (spanRes._tag === "Err") return spanRes;
 
-  const formattedValue = formatValueForProperty(propertyValue);
+  const span = spanRes.value;
+
+  const formattedValueRes = formatValueForProperty(propertyValue);
+  if (formattedValueRes._tag === "Err") return formattedValueRes;
+
+  const formattedValue = formattedValueRes.value;
 
   if (span) {
-    return `${original.slice(0, span.valueStart)}${formattedValue}${original.slice(span.valueEnd)}`;
+    return ok(
+      `${original.slice(0, span.valueStart)}${formattedValue}${original.slice(span.valueEnd)}`,
+    );
   }
 
   const hasProps = hasAnyProperties(original, rootOpenIndex, rootCloseIndex);
@@ -447,5 +492,5 @@ export function upsertTopLevelJsoncProperty(
   const comma = lastSig === "{" || lastSig === "," ? "" : ",";
   const insert = `${comma}\n  // TODO: windows support\n  ${JSON.stringify(propertyName)}: ${formattedValue}\n`;
 
-  return `${original.slice(0, rootCloseIndex)}${insert}${original.slice(rootCloseIndex)}`;
+  return ok(`${original.slice(0, rootCloseIndex)}${insert}${original.slice(rootCloseIndex)}`);
 }

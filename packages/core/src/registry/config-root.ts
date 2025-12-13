@@ -4,12 +4,7 @@ import { stat } from "node:fs/promises";
 import type { ConfigRoot } from "./types";
 
 async function isDir(p: string): Promise<boolean> {
-  try {
-    const s = await stat(p);
-    return s.isDirectory();
-  } catch {
-    return false;
-  }
+  return stat(p).then((s) => s.isDirectory()).catch(() => false);
 }
 
 function normalize(p: string): string {

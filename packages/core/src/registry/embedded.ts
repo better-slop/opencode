@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import type { RegistryItemV1 } from "./types";
 
 const TOOLS = {
@@ -10,18 +11,28 @@ export function listEmbeddedItems(): EmbeddedName[] {
   return Object.keys(TOOLS) as EmbeddedName[];
 }
 
-export async function getEmbeddedRegistryItem(
+export type EmbeddedReadFailed = {
+  _tag: "EmbeddedReadFailed";
+  name: string;
+  cause: unknown;
+};
+
+export function getEmbeddedRegistryItemEffect(
   name: string,
-): Promise<RegistryItemV1 | null> {
+): Effect.Effect<RegistryItemV1 | null, EmbeddedReadFailed> {
   const s = name.trim();
   const key = s.includes("/") ? (s.split("/").at(-1) ?? "") : s;
 
-  if (key in TOOLS) {
-    const k = key as EmbeddedName;
-    const url = TOOLS[k];
-    const content = await Bun.file(url).text();
+  if (!(key in TOOLS)) return Effect.succeed(null);
 
-    return {
+  const k = key as EmbeddedName;
+  const url = TOOLS[k];
+
+  return Effect.tryPromise({
+    try: () => Bun.file(url).text(),
+    catch: (cause): EmbeddedReadFailed => ({ _tag: "EmbeddedReadFailed", name: k, cause }),
+  }).pipe(
+    Effect.map((content) => ({
       schemaVersion: 1,
       kind: "tool",
       name: k,
@@ -33,8 +44,6 @@ export async function getEmbeddedRegistryItem(
         },
       ],
       entry: "index.ts",
-    };
-  }
-
-  return null;
+    })),
+  );
 }
